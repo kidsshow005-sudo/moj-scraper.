@@ -1,35 +1,46 @@
-const axios = require('axios');
+export const config = {
+  runtime: 'edge',
+};
 
-module.exports = async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+export default async (req) => {
+  const { searchParams } = new URL(req.url);
+  const title = searchParams.get('title');
 
-    let { title } = req.query;
-    if (!title) return res.status(200).json({ success: false });
+  if (!title) return new Response(JSON.stringify({ success: false }), { status: 400 });
 
-    try {
-        // SKÚŠAME SLOVENSKÚ DOMÉNU
-        const searchUrl = `https://prehrajto.sk/search/score?q=${encodeURIComponent(title)}`;
+  try {
+    // Skúsime vyhľadať priamo cez mobilné rozhranie
+    const searchUrl = `https://prehrajto.cz/search/score?q=${encodeURIComponent(title + " cz")}`;
 
-        const response = await axios.get(searchUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
-            },
-            timeout: 7000 
-        });
+    const res = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'Referer': 'https://prehrajto.cz/'
+      }
+    });
 
-        const regex = /\/video\/([a-zA-Z0-9-]+)/;
-        const match = response.data.match(regex);
+    const html = await res.text();
+    const match = html.match(/\/video\/([a-zA-Z0-9-]+)/);
 
-        if (match && match[1]) {
-            return res.status(200).json({ success: true, videoId: match[1] });
-        }
-        return res.status(200).json({ success: false, error: "Nenájdené na SK" });
-
-    } catch (error) {
-        return res.status(200).json({ success: false, error: "Blokované serverom" });
+    if (match && match[1]) {
+      return new Response(JSON.stringify({ success: true, videoId: match[1] }), {
+        status: 200,
+        headers: { 
+          'content-type': 'application/json',
+          'Access-Control-Allow-Origin': '*' 
+        },
+      });
     }
+
+    return new Response(JSON.stringify({ success: false }), { 
+        status: 200, 
+        headers: { 'Access-Control-Allow-Origin': '*' } 
+    });
+
+  } catch (e) {
+    return new Response(JSON.stringify({ success: false, error: e.message }), { 
+        status: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' }
+    });
+  }
 };
