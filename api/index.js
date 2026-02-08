@@ -7,28 +7,27 @@ module.exports = async (req, res) => {
 
     if (req.method === 'OPTIONS') return res.status(200).end();
 
-    const { title } = req.query;
-    if (!title) return res.status(400).json({ success: false, error: "Chýba názov" });
+    let { title } = req.query;
+    if (!title) return res.status(400).json({ success: false });
+
+    // Vyčistíme názov od zbytočností
+    const cleanTitle = title.split('(')[0].trim();
 
     try {
-        // Hľadáme prioritne verzie s CZ dabingom pridaním "cz" k názvu
-        const searchQuery = `${title} cz`;
-        const searchUrl = `https://prehrajto.cz/search/score?q=${encodeURIComponent(searchQuery)}`;
+        // Skúsime vyhľadať priamo cez mobilnú verziu, ktorá je menej blokovaná
+        const searchUrl = `https://prehrajto.cz/search/score?q=${encodeURIComponent(cleanTitle + " cz")}`;
 
         const response = await axios.get(searchUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'X-Requested-With': 'XMLHttpRequest', // Toto povie serveru, že sme ich vlastný script
-                'Referer': 'https://prehrajto.cz/'
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1',
+                'Referer': 'https://prehrajto.cz/',
+                'X-Requested-With': 'XMLHttpRequest'
             },
-            timeout: 5000
+            timeout: 9000
         });
 
-        // Prehraj.to vrací HTML kusy vo výsledkoch
         const html = response.data;
-
-        // Vylepšený hľadač ID videa - hľadá prvé ID v zozname výsledkov
-        // Formát odkazu je zvyčajne href="/video/nazov-videa-ID"
+        // Hľadáme ID videa (kombinácia písmen a čísiel po /video/)
         const regex = /\/video\/([a-zA-Z0-9-]+)/;
         const match = html.match(regex);
 
@@ -37,19 +36,12 @@ module.exports = async (req, res) => {
                 success: true,
                 videoId: match[1]
             });
-        } else {
-            // Ak nenašlo s CZ, skúsime ešte raz bez "cz"
-            const fallbackRes = await axios.get(`https://prehrajto.cz/search/score?q=${encodeURIComponent(title)}`);
-            const fallbackMatch = fallbackRes.data.match(regex);
-            
-            if (fallbackMatch && fallbackMatch[1]) {
-                return res.status(200).json({ success: true, videoId: fallbackMatch[1] });
-            }
-            
-            return res.status(404).json({ success: false, error: "Nenájdené" });
         }
 
+        return res.status(404).json({ success: false, error: "Nenájdené" });
+
     } catch (error) {
-        return res.status(500).json({ success: false, error: "Server error" });
+        console.error("Chyba:", error.message);
+        return res.status(500).json({ success: false, error: "Server busy" });
     }
 };
