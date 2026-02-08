@@ -4,44 +4,32 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     let { title } = req.query;
-    if (!title) return res.status(400).json({ success: false });
-
-    // Vyčistíme názov od zbytočností
-    const cleanTitle = title.split('(')[0].trim();
+    if (!title) return res.status(200).json({ success: false });
 
     try {
-        // Skúsime vyhľadať priamo cez mobilnú verziu, ktorá je menej blokovaná
-        const searchUrl = `https://prehrajto.cz/search/score?q=${encodeURIComponent(cleanTitle + " cz")}`;
+        // SKÚŠAME SLOVENSKÚ DOMÉNU
+        const searchUrl = `https://prehrajto.sk/search/score?q=${encodeURIComponent(title)}`;
 
         const response = await axios.get(searchUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1',
-                'Referer': 'https://prehrajto.cz/',
-                'X-Requested-With': 'XMLHttpRequest'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
             },
-            timeout: 9000
+            timeout: 7000 
         });
 
-        const html = response.data;
-        // Hľadáme ID videa (kombinácia písmen a čísiel po /video/)
         const regex = /\/video\/([a-zA-Z0-9-]+)/;
-        const match = html.match(regex);
+        const match = response.data.match(regex);
 
         if (match && match[1]) {
-            return res.status(200).json({
-                success: true,
-                videoId: match[1]
-            });
+            return res.status(200).json({ success: true, videoId: match[1] });
         }
-
-        return res.status(404).json({ success: false, error: "Nenájdené" });
+        return res.status(200).json({ success: false, error: "Nenájdené na SK" });
 
     } catch (error) {
-        console.error("Chyba:", error.message);
-        return res.status(500).json({ success: false, error: "Server busy" });
+        return res.status(200).json({ success: false, error: "Blokované serverom" });
     }
 };
