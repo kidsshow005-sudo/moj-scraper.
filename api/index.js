@@ -1,50 +1,48 @@
 const axios = require('axios');
-const cheerio = require('cheerio');
 
 module.exports = async (req, res) => {
-    // Toto povolí tvojmu webu komunikovať so serverom bez chýb
+    // POVOLENIE PRE TVOJ WEB (CORS)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // Odpoveď na predbežnú požiadavku prehliadača (pre istotu)
     if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+        return res.status(200).end();
     }
 
     const { title } = req.query;
 
     if (!title) {
-        return res.status(400).json({ success: false, message: "Chýba názov filmu." });
+        return res.status(400).json({ success: false, error: "Chýba názov filmu" });
     }
 
     try {
-        // Vyčistíme názov pre lepšie hľadanie
-        const cleanTitle = title.replace(/[^\w\s]/gi, '');
-        const searchUrl = `https://prehrajto.cz/hledej/${encodeURIComponent(cleanTitle + " cz dabing")}`;
-
-        const { data } = await axios.get(searchUrl, {
+        // Vyhľadávanie na Prehraj.to
+        const searchUrl = `https://prehrajto.cz/hladaj/${encodeURIComponent(title)}`;
+        const response = await axios.get(searchUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-            },
-            timeout: 8000 // Server počká max 8 sekúnd
+            }
         });
 
-        const $ = cheerio.load(data);
+        const html = response.data;
         
-        // Hľadáme prvý odkaz na video na Prehraj.to
-        const firstLink = $('.video-item a').first().attr('href');
+        // Hľadanie ID videa v HTML kóde pomocou regulárneho výrazu
+        // Hľadáme linky typu /video/nieco-id
+        const regex = /\/video\/([a-zA-Z0-9-]+)/;
+        const match = html.match(regex);
 
-        if (firstLink) {
-            // Získame ID videa z odkazu (napr. z /v/abcde získa abcde)
-            const videoId = firstLink.split('/').filter(Boolean).pop();
-            return res.status(200).json({ success: true, videoId: videoId });
+        if (match && match[1]) {
+            return res.status(200).json({
+                success: true,
+                videoId: match[1],
+                title: title
+            });
         } else {
-            return res.status(200).json({ success: false, message: "Nenašlo sa žiadne video." });
+            return res.status(404).json({ success: false, error: "Video nebolo nájdené" });
         }
+
     } catch (error) {
-        console.error("Chyba scrapera:", error.message);
-        return res.status(500).json({ success: false, error: "Chyba pripojenia k zdroju." });
+        return res.status(500).json({ success: false, error: error.message });
     }
 };
